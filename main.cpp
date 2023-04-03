@@ -22,7 +22,7 @@ function line(int x0, int x1, int y0, int y1, TGAImage &image, TGAColor color)
 
     int dx  = x1 - x0;
 
-    int derror = 2 * (y1 - y0);
+    int derror = 2 * abs(y1 - y0);
     int error = 0;
     int y = y0;
 
