@@ -1,9 +1,12 @@
-#include "tgaimage.h";
+#include "tgaimage.h"
+#include "geometry.h"
 #include <vector>
-using std;
+#include <cmath>
+using namespace std;
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
+const TGAColor green = TGAColor(0,   255, 0,   255);
 
 
 void line(int x0, int x1, int y0, int y1, TGAImage &image, TGAColor color)
@@ -78,8 +81,8 @@ void triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color) {
     {
         bool isUp = y <= t1.y;
         int halfHeight = isUp ? t1.y - t0.y : t2.y - t1.y;
-        int x1 = Math.round(x0.x + (float)(x2.x - x0.x) * (y - t0.y) / height));
-        int x2 = Math.round(isUp ? (x0.x + (float)(x1.x - x0.x) * (y - t0.y) / halfHeight) : (x1.x + (float)(x2.x - x1.x) * (y - t1.y) / halfHeight));
+        int x1 = round(t0.x + (float)(t2.x - t0.x) * (y - t0.y) / height);
+        int x2 = round(isUp ? (t0.x + (float)(t1.x - t0.x) * (y - t0.y) / halfHeight) : (t1.x + (float)(t2.x - t1.x) * (y - t1.y) / halfHeight));
 
         if (x1 > x2) {
             swap(x1, x2);
