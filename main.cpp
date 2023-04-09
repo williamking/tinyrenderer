@@ -145,6 +145,50 @@ void drawModelColor(TGAImage &image) {
     delete model;
 }
 
+// 计算点p的质心坐标
+Vec3f barycentric(Vec2i *pts, Vec2i P) {
+    Vec2i AC = pts[2] - pts[0];
+    Vec2i AB = pts[1] - pts[0];
+    Vec2i BC = pts[2] - pts[1];
+    Vec2i PA = pts[0] - P;
+
+    Vec3f u = Vec3f(AB.x, AC.x, PA.x) ^ Vec3f(AB.y, AC.y, PA.y);
+
+    if (abs(u.z) < 1)
+    {
+        return Vec3f(-1, 1, 1);
+    }
+
+    return Vec3f(1.f-(u.x+u.y)/u.z, u.y/u.z, u.x/u.z);
+}
+
+void drawModelLight(TGAImage &image) {
+    Vec3f light_dir(0,0,-1);
+
+    model = new Model("../obj/african_head/african_head.obj");
+    for (int i=0; i<model->nfaces(); i++) { 
+        std::vector<int> face = model->face(i); 
+        Vec2i screen_coords[3]; 
+        Vec3f world_coords_list[3];
+
+        for (int j=0; j<3; j++) { 
+            Vec3f world_coords = model->vert(face[j]); 
+            screen_coords[j] = Vec2i((world_coords.x+1.)*width/2., (world_coords.y+1.)*height/2.);
+            world_coords_list[j] = world_coords; 
+        }
+
+        Vec3f normal_vector = (world_coords_list[2] - world_coords_list[0]) ^ (world_coords_list[1] - world_coords_list[0]);
+        normal_vector.normalize();
+        float intensity = normal_vector * light_dir;
+
+        if (intensity > 0)
+        {
+            triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255)); 
+        }
+    }
+    delete model;
+}
+
 int main(int argc, char** argv) {
     TGAImage image(width, height, TGAImage::RGB);
 
@@ -164,7 +208,9 @@ int main(int argc, char** argv) {
     // triangle(t2[0], t2[1], t2[2], image, green);
 
     // 绘制模型
-    drawModelColor(image);
+    // drawModelColor(image);
+
+    drawModelLight(image);
 
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
     image.write_tga_file("output.tga");
