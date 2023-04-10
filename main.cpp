@@ -11,8 +11,26 @@ const TGAColor red   = TGAColor(255, 0,   0,   255);
 const TGAColor green = TGAColor(0,   255, 0,   255);
 const int width = 600;
 const int height = 600;
+float *zBuffer = new float[width * height];
 
 Model *model = NULL;
+
+// 计算点p的质心坐标
+Vec3f barycentric(Vec3f *pts, Vec3f P) {
+    Vec3f AC = pts[2] - pts[0];
+    Vec3f AB = pts[1] - pts[0];
+    Vec3f BC = pts[2] - pts[1];
+    Vec3f PA = pts[0] - P;
+
+    Vec3f u = Vec3f(AB.x, AC.x, PA.x) ^ Vec3f(AB.y, AC.y, PA.y);
+
+    if (abs(u.z) < 1)
+    {
+        return Vec3f(-1, 1, 1);
+    }
+
+    return Vec3f(1.f-(u.x+u.y)/u.z, u.y/u.z, u.x/u.z);
+}
 
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color)
 {
@@ -66,7 +84,7 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color)
     }
 }
 
-void triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color) {
+void triangle(Vec3f t0, Vec3f t1, Vec3f t2, TGAImage &image, TGAColor color) {
     if (t0.y >t1.y) {
         swap(t0, t1);
     }
@@ -82,6 +100,7 @@ void triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color) {
     }
 
     int height = t2.y - t0.y;
+    Vec3f pts[3] = { t0, t1, t2 };
 
     for (int i = 0; i < height; ++i)
     {
@@ -91,8 +110,8 @@ void triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color) {
         float beta = isUp ? (float)i / halfHeight : (float)(i + t0.y - t1.y) / halfHeight;
         // int x1 = round(t0.x + (float)(t2.x - t0.x) * (y - t0.y) / height);
         // int x2 = round(isUp ? (t0.x + (float)(t1.x - t0.x) * (y - t0.y) / halfHeight) : (t1.x + (float)(t2.x - t1.x) * (y - t1.y) / halfHeight));
-        Vec2i v1 = t0 + (t2 - t0) * alpha;
-        Vec2i v2 = isUp ? (t0 + (t1 - t0) * beta) : (t1 + (t2 - t1) * beta);
+        Vec3f v1 = t0 + (t2 - t0) * alpha;
+        Vec3f v2 = isUp ? (t0 + (t1 - t0) * beta) : (t1 + (t2 - t1) * beta);
 
         if (v1.x > v2.x) {
             swap(v1, v2);
@@ -101,7 +120,14 @@ void triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color) {
         for (int x = v1.x; x <= v2.x; ++x)
         {
             int y = i + t0.y;
-            image.set(x, y, color);
+            Vec3f p = Vec3f(x, y, 0);
+            Vec3f centric = barycentric(pts, p);
+            float z = t0.z * centric.x + t1.z * centric.y + t2.z * centric.z; 
+            if (z > zBuffer[y * width + x])
+            {
+                zBuffer[y * width + x] = z;
+                image.set(x, y, color);
+            }
         }
     }
 }
@@ -135,31 +161,14 @@ void drawModelColor(TGAImage &image) {
     model = new Model("../obj/african_head/african_head.obj");
     for (int i=0; i<model->nfaces(); i++) { 
         std::vector<int> face = model->face(i); 
-        Vec2i screen_coords[3]; 
+        Vec3f screen_coords[3]; 
         for (int j=0; j<3; j++) { 
             Vec3f world_coords = model->vert(face[j]); 
-            screen_coords[j] = Vec2i((world_coords.x+1.)*width/2., (world_coords.y+1.)*height/2.); 
+            screen_coords[j] = Vec3f((world_coords.x+1.)*width/2., (world_coords.y+1.)*height/2., world_coords.z); 
         } 
         triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(rand()%255, rand()%255, rand()%255, 255)); 
     }
     delete model;
-}
-
-// 计算点p的质心坐标
-Vec3f barycentric(Vec2i *pts, Vec2i P) {
-    Vec2i AC = pts[2] - pts[0];
-    Vec2i AB = pts[1] - pts[0];
-    Vec2i BC = pts[2] - pts[1];
-    Vec2i PA = pts[0] - P;
-
-    Vec3f u = Vec3f(AB.x, AC.x, PA.x) ^ Vec3f(AB.y, AC.y, PA.y);
-
-    if (abs(u.z) < 1)
-    {
-        return Vec3f(-1, 1, 1);
-    }
-
-    return Vec3f(1.f-(u.x+u.y)/u.z, u.y/u.z, u.x/u.z);
 }
 
 void drawModelLight(TGAImage &image) {
@@ -168,12 +177,12 @@ void drawModelLight(TGAImage &image) {
     model = new Model("../obj/african_head/african_head.obj");
     for (int i=0; i<model->nfaces(); i++) { 
         std::vector<int> face = model->face(i); 
-        Vec2i screen_coords[3]; 
+        Vec3f screen_coords[3]; 
         Vec3f world_coords_list[3];
 
         for (int j=0; j<3; j++) { 
             Vec3f world_coords = model->vert(face[j]); 
-            screen_coords[j] = Vec2i((world_coords.x+1.)*width/2., (world_coords.y+1.)*height/2.);
+            screen_coords[j] = Vec3f((world_coords.x+1.)*width/2., (world_coords.y+1.)*height/2., world_coords.z);
             world_coords_list[j] = world_coords; 
         }
 
