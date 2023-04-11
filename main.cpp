@@ -11,7 +11,7 @@ const TGAColor red   = TGAColor(255, 0,   0,   255);
 const TGAColor green = TGAColor(0,   255, 0,   255);
 const int width = 600;
 const int height = 600;
-float *zBuffer = new float[width * height];
+float *zBuffer = NULL;
 
 Model *model = NULL;
 
@@ -84,7 +84,7 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color)
     }
 }
 
-void triangle(Vec3f t0, Vec3f t1, Vec3f t2, TGAImage &image, TGAColor color) {
+void triangle2d(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color) {
     if (t0.y >t1.y) {
         swap(t0, t1);
     }
@@ -100,12 +100,56 @@ void triangle(Vec3f t0, Vec3f t1, Vec3f t2, TGAImage &image, TGAColor color) {
     }
 
     int height = t2.y - t0.y;
-    Vec3f pts[3] = { t0, t1, t2 };
 
     for (int i = 0; i < height; ++i)
     {
         bool isUp = !(i>t1.y-t0.y || t1.y==t0.y);
         int halfHeight = isUp ? t1.y - t0.y : t2.y - t1.y;
+        float alpha = (float)i / height;
+        float beta = isUp ? (float)i / halfHeight : (float)(i + t0.y - t1.y) / halfHeight;
+        // int x1 = round(t0.x + (float)(t2.x - t0.x) * (y - t0.y) / height);
+        // int x2 = round(isUp ? (t0.x + (float)(t1.x - t0.x) * (y - t0.y) / halfHeight) : (t1.x + (float)(t2.x - t1.x) * (y - t1.y) / halfHeight));
+        Vec2i v1 = t0 + (t2 - t0) * alpha;
+        Vec2i v2 = isUp ? (t0 + (t1 - t0) * beta) : (t1 + (t2 - t1) * beta);
+
+        if (v1.x > v2.x) {
+            swap(v1, v2);
+        }
+
+        for (int x = v1.x; x <= v2.x; ++x)
+        {
+            int y = i + t0.y;
+            image.set(x, y, color);
+        }
+    }
+}
+
+void triangle(Vec3f t0, Vec3f t1, Vec3f t2, TGAImage &image, TGAColor color) {
+    Vec3f originPts[3];
+    originPts[0] = t0;
+    originPts[1] = t1;
+    originPts[2] = t2;
+
+    if (t0.y >t1.y) {
+        swap(t0, t1);
+    }
+
+    if (t1.y > t2.y)
+    {
+        swap(t1, t2);
+    }
+
+    if (t0.y > t1.y)
+    {
+        swap(t0, t1);
+    }
+
+    int height = round(t2.y - t0.y);
+
+    for (int i = 0; i < height; ++i)
+    {
+        bool isUp = !(i>t1.y-t0.y || t1.y==t0.y);
+        float halfHeight = isUp ? t1.y - t0.y : t2.y - t1.y;
         float alpha = (float)i / height;
         float beta = isUp ? (float)i / halfHeight : (float)(i + t0.y - t1.y) / halfHeight;
         // int x1 = round(t0.x + (float)(t2.x - t0.x) * (y - t0.y) / height);
@@ -117,12 +161,12 @@ void triangle(Vec3f t0, Vec3f t1, Vec3f t2, TGAImage &image, TGAColor color) {
             swap(v1, v2);
         }
 
-        for (int x = v1.x; x <= v2.x; ++x)
+        for (int x = round(v1.x); x <= round(v2.x); ++x)
         {
-            int y = i + t0.y;
+            int y = round(i + t0.y);
             Vec3f p = Vec3f(x, y, 0);
-            Vec3f centric = barycentric(pts, p);
-            float z = t0.z * centric.x + t1.z * centric.y + t2.z * centric.z; 
+            Vec3f centric = barycentric(originPts, p);
+            float z = originPts[0].z * centric.x + originPts[1].z * centric.y + originPts[2].z * centric.z; 
             if (z > zBuffer[y * width + x])
             {
                 zBuffer[y * width + x] = z;
@@ -158,7 +202,11 @@ void drawModelLine(TGAImage &image) {
 }
 
 void drawModelColor(TGAImage &image) {
+    zBuffer = new float[width * height];
     model = new Model("../obj/african_head/african_head.obj");
+
+    for (int i=width*height; i--; zBuffer[i] = -std::numeric_limits<float>::max());
+
     for (int i=0; i<model->nfaces(); i++) { 
         std::vector<int> face = model->face(i); 
         Vec3f screen_coords[3]; 
@@ -169,10 +217,20 @@ void drawModelColor(TGAImage &image) {
         triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(rand()%255, rand()%255, rand()%255, 255)); 
     }
     delete model;
+    delete zBuffer;
+    model = NULL;
+    zBuffer = NULL;
+}
+
+Vec3f world2screen(Vec3f v) {
+    return Vec3f(int((v.x+1.)*width/2.+.5), int((v.y+1.)*height/2.+.5), v.z);
 }
 
 void drawModelLight(TGAImage &image) {
+    zBuffer = new float[width * height];
     Vec3f light_dir(0,0,-1);
+
+    for (int i=width*height; i--; zBuffer[i] = -std::numeric_limits<float>::max());
 
     model = new Model("../obj/african_head/african_head.obj");
     for (int i=0; i<model->nfaces(); i++) { 
@@ -182,7 +240,7 @@ void drawModelLight(TGAImage &image) {
 
         for (int j=0; j<3; j++) { 
             Vec3f world_coords = model->vert(face[j]); 
-            screen_coords[j] = Vec3f((world_coords.x+1.)*width/2., (world_coords.y+1.)*height/2., world_coords.z);
+            screen_coords[j] = world2screen(world_coords);
             world_coords_list[j] = world_coords; 
         }
 
@@ -196,6 +254,9 @@ void drawModelLight(TGAImage &image) {
         }
     }
     delete model;
+    delete zBuffer;
+    model = NULL;
+    zBuffer = NULL;
 }
 
 int main(int argc, char** argv) {
@@ -212,9 +273,9 @@ int main(int argc, char** argv) {
     // Vec2i t0[3] = {Vec2i(10, 70),   Vec2i(50, 160),  Vec2i(70, 80)}; 
     // Vec2i t1[3] = {Vec2i(180, 50),  Vec2i(150, 1),   Vec2i(70, 180)}; 
     // Vec2i t2[3] = {Vec2i(180, 150), Vec2i(120, 160), Vec2i(130, 180)}; 
-    // triangle(t0[0], t0[1], t0[2], image, red); 
-    // triangle(t1[0], t1[1], t1[2], image, white); 
-    // triangle(t2[0], t2[1], t2[2], image, green);
+    // triangle2d(t0[0], t0[1], t0[2], image, red); 
+    // triangle2d(t1[0], t1[1], t1[2], image, white); 
+    // triangle2d(t2[0], t2[1], t2[2], image, green);
 
     // 绘制模型
     // drawModelColor(image);
