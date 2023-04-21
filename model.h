@@ -15,6 +15,8 @@ public:
 	int nfaces();
 	Vec3f vert(int i);
 	std::vector<int> face(int idx);
+	Vec3f vert(int iface, int nthvert);
+	Vec3f normal(int iface, int nthvert);
 };
 
 #endif //__MODEL_H__

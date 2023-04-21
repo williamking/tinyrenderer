@@ -1,6 +1,7 @@
 #include "tgaimage.h"
 #include "geometry.h"
 #include "model.h"
+#include "our_gl.h"
 #include <vector>
 #include <cmath>
 #include <iostream>
@@ -15,22 +16,10 @@ float *zBuffer = NULL;
 
 Model *model = NULL;
 
-// 计算点p的质心坐标
-Vec3f barycentric(Vec3f *pts, Vec3f P) {
-    Vec3f AC = pts[2] - pts[0];
-    Vec3f AB = pts[1] - pts[0];
-    Vec3f BC = pts[2] - pts[1];
-    Vec3f PA = pts[0] - P;
-
-    Vec3f u = Vec3f(AB.x, AC.x, PA.x) ^ Vec3f(AB.y, AC.y, PA.y);
-
-    if (abs(u.z) < 1)
-    {
-        return Vec3f(-1, 1, 1);
-    }
-
-    return Vec3f(1.f-(u.x+u.y)/u.z, u.y/u.z, u.x/u.z);
-}
+Vec3f light_dir(1,1,1);
+Vec3f       eye(1,1,3);
+Vec3f    center(0,0,0);
+Vec3f        up(0,1,0);
 
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color)
 {
@@ -84,98 +73,6 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color)
     }
 }
 
-void triangle2d(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color) {
-    if (t0.y >t1.y) {
-        swap(t0, t1);
-    }
-
-    if (t1.y > t2.y)
-    {
-        swap(t1, t2);
-    }
-
-    if (t0.y > t1.y)
-    {
-        swap(t0, t1);
-    }
-
-    int height = t2.y - t0.y;
-
-    for (int i = 0; i < height; ++i)
-    {
-        bool isUp = !(i>t1.y-t0.y || t1.y==t0.y);
-        int halfHeight = isUp ? t1.y - t0.y : t2.y - t1.y;
-        float alpha = (float)i / height;
-        float beta = isUp ? (float)i / halfHeight : (float)(i + t0.y - t1.y) / halfHeight;
-        // int x1 = round(t0.x + (float)(t2.x - t0.x) * (y - t0.y) / height);
-        // int x2 = round(isUp ? (t0.x + (float)(t1.x - t0.x) * (y - t0.y) / halfHeight) : (t1.x + (float)(t2.x - t1.x) * (y - t1.y) / halfHeight));
-        Vec2i v1 = t0 + (t2 - t0) * alpha;
-        Vec2i v2 = isUp ? (t0 + (t1 - t0) * beta) : (t1 + (t2 - t1) * beta);
-
-        if (v1.x > v2.x) {
-            swap(v1, v2);
-        }
-
-        for (int x = v1.x; x <= v2.x; ++x)
-        {
-            int y = i + t0.y;
-            image.set(x, y, color);
-        }
-    }
-}
-
-void triangle(Vec3f t0, Vec3f t1, Vec3f t2, TGAImage &image, TGAColor color) {
-    Vec3f originPts[3];
-    originPts[0] = t0;
-    originPts[1] = t1;
-    originPts[2] = t2;
-
-    if (t0.y >t1.y) {
-        swap(t0, t1);
-    }
-
-    if (t1.y > t2.y)
-    {
-        swap(t1, t2);
-    }
-
-    if (t0.y > t1.y)
-    {
-        swap(t0, t1);
-    }
-
-    int height = round(t2.y - t0.y);
-
-    for (int i = 0; i < height; ++i)
-    {
-        bool isUp = !(i>t1.y-t0.y || t1.y==t0.y);
-        float halfHeight = isUp ? t1.y - t0.y : t2.y - t1.y;
-        float alpha = (float)i / height;
-        float beta = isUp ? (float)i / halfHeight : (float)(i + t0.y - t1.y) / halfHeight;
-        // int x1 = round(t0.x + (float)(t2.x - t0.x) * (y - t0.y) / height);
-        // int x2 = round(isUp ? (t0.x + (float)(t1.x - t0.x) * (y - t0.y) / halfHeight) : (t1.x + (float)(t2.x - t1.x) * (y - t1.y) / halfHeight));
-        Vec3f v1 = t0 + (t2 - t0) * alpha;
-        Vec3f v2 = isUp ? (t0 + (t1 - t0) * beta) : (t1 + (t2 - t1) * beta);
-
-        if (v1.x > v2.x) {
-            swap(v1, v2);
-        }
-
-        for (int x = round(v1.x); x <= round(v2.x); ++x)
-        {
-            int y = round(i + t0.y);
-            Vec3f p = Vec3f(x, y, 0);
-            Vec3f centric = barycentric(originPts, p);
-            float z = originPts[0].z * centric.x + originPts[1].z * centric.y + originPts[2].z * centric.z; 
-            if (z > zBuffer[y * width + x])
-            {
-                zBuffer[y * width + x] = z;
-                image.set(x, y, color);
-            }
-        }
-    }
-}
-
 void drawModelLine(TGAImage &image) {
     model = new Model("../obj/african_head.obj");  //命令行控制方式构造model
 
@@ -202,7 +99,6 @@ void drawModelLine(TGAImage &image) {
 }
 
 void drawModelColor(TGAImage &image) {
-    zBuffer = new float[width * height];
     model = new Model("../obj/african_head/african_head.obj");
 
     for (int i=width*height; i--; zBuffer[i] = -std::numeric_limits<float>::max());
@@ -214,10 +110,9 @@ void drawModelColor(TGAImage &image) {
             Vec3f world_coords = model->vert(face[j]); 
             screen_coords[j] = Vec3f((world_coords.x+1.)*width/2., (world_coords.y+1.)*height/2., world_coords.z); 
         } 
-        triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(rand()%255, rand()%255, rand()%255, 255)); 
+        // triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(rand()%255, rand()%255, rand()%255, 255)); 
     }
     delete model;
-    delete zBuffer;
     model = NULL;
     zBuffer = NULL;
 }
@@ -227,7 +122,6 @@ Vec3f world2screen(Vec3f v) {
 }
 
 void drawModelLight(TGAImage &image) {
-    zBuffer = new float[width * height];
     Vec3f light_dir(0,0,-1);
 
     for (int i=width*height; i--; zBuffer[i] = -std::numeric_limits<float>::max());
@@ -238,29 +132,115 @@ void drawModelLight(TGAImage &image) {
         Vec3f screen_coords[3]; 
         Vec3f world_coords_list[3];
 
-        for (int j=0; j<3; j++) { 
+        for (int j=0; j<3; j++) {
             Vec3f world_coords = model->vert(face[j]); 
             screen_coords[j] = world2screen(world_coords);
             world_coords_list[j] = world_coords; 
         }
 
-        Vec3f normal_vector = (world_coords_list[2] - world_coords_list[0]) ^ (world_coords_list[1] - world_coords_list[0]);
+        Vec3f normal_vector = cross((world_coords_list[2] - world_coords_list[0]), (world_coords_list[1] - world_coords_list[0]));
         normal_vector.normalize();
         float intensity = normal_vector * light_dir;
 
         if (intensity > 0)
         {
-            triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255)); 
+            // triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255)); 
         }
     }
     delete model;
-    delete zBuffer;
+    model = NULL;
+    zBuffer = NULL;
+}
+
+struct PhongShader : public IShader {
+    Vec3f dirs[3];
+
+    // 顶点着色器，参数为面索引和第几个顶点
+    virtual Vec4f vertex(int iface, int nthvert) {
+        // 计算每个顶点的光照
+        dirs[nthvert] = model->normal(iface, nthvert);
+        Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
+        Vec4f result = Viewport*Projection*ModelView*gl_Vertex;
+
+        // cout << "origin vertex " << gl_Vertex << endl;
+        // cout << "screen vertex " << result << endl;
+        
+        return result; // transform it to screen coordinates
+
+    }
+
+    virtual bool fragment(Vec3f bar, TGAColor &color) {
+        Vec3f normal(0, 0, 0);
+
+        for (int i = 0; i < 3; ++i)
+        {
+            normal = normal + dirs[i];
+        }
+
+        normal = normal.normalize();
+
+        float intensity = std::max(0.f, normal * light_dir);
+
+        color = TGAColor(255, 255, 255) * intensity; // well duh
+        // cout << "intensity: " << intensity << endl;
+        return false;                              // no, we do not discard this pixel
+    }
+};
+
+struct GraundShader : public IShader {
+    Vec3f varying_intensity; // written by vertex shader, read by fragment shader
+
+    // 顶点着色器，参数为面索引和第几个顶点
+    virtual Vec4f vertex(int iface, int nthvert) {
+        // 计算每个顶点的光照
+        varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity
+        Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
+        Vec4f result = Viewport*Projection*ModelView*gl_Vertex;
+
+        // cout << "origin vertex " << gl_Vertex << endl;
+        // cout << "screen vertex " << result << endl;
+        
+        return result; // transform it to screen coordinates
+
+    }
+
+    virtual bool fragment(Vec3f bar, TGAColor &color) {
+        float intensity = varying_intensity*bar;   // interpolate intensity for the current pixel
+        color = TGAColor(255, 255, 255) * intensity; // well duh
+        // cout << "intensity: " << intensity << endl;
+        return false;                              // no, we do not discard this pixel
+    }
+};
+
+void drawModelWithShader(TGAImage &image) {
+    // for (int i=width*height; i--; zBuffer[i] = -std::numeric_limits<float>::max());
+    TGAImage zbuffer(width, height, TGAImage::GRAYSCALE);
+    GraundShader shader;
+
+    model = new Model("../obj/african_head/african_head.obj");
+    for (int i=0; i<model->nfaces(); i++) { 
+        std::vector<int> face = model->face(i); 
+        Vec4f screen_coords[3]; 
+
+        for (int j=0; j<3; j++) {
+            screen_coords[j] = shader.vertex(i, j);
+        }
+
+        triangle(screen_coords, shader, image, zbuffer); 
+    }
+    delete model;
     model = NULL;
     zBuffer = NULL;
 }
 
 int main(int argc, char** argv) {
     TGAImage image(width, height, TGAImage::RGB);
+    zBuffer = new float[width * height];
+
+    lookat(eye, center, up);
+    viewport(width/8, height/8, width*3/4, height*3/4);
+    projection(-1.f/(eye-center).norm());
+    light_dir.normalize();
 
     // 测试画线
     // line(13, 20, 80, 40, image, white); 
@@ -278,12 +258,15 @@ int main(int argc, char** argv) {
     // triangle2d(t2[0], t2[1], t2[2], image, green);
 
     // 绘制模型
-    // drawModelColor(image);
+    //drawModelColor(image);
 
-    drawModelLight(image);
+    // drawModelLight(image);
+
+    drawModelWithShader(image);
 
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
     image.write_tga_file("output.tga");
 
+    delete zBuffer;
     return 0;
 }
