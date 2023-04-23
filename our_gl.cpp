@@ -10,13 +10,13 @@ Matrix Viewport;
 Matrix Projection;
 
 // 计算点p的质心坐标
-Vec3f barycentric(Vec3f *pts, Vec3f P) {
-    Vec3f AC = pts[2] - pts[0];
-    Vec3f AB = pts[1] - pts[0];
-    Vec3f BC = pts[2] - pts[1];
-    Vec3f PA = pts[0] - P;
+Vec3f barycentric(Vec2f *pts, Vec2f P) {
+    Vec2f AC = pts[2] - pts[0];
+    Vec2f AB = pts[1] - pts[0];
+    Vec2f BC = pts[2] - pts[1];
+    Vec2f PA = pts[0] - P;
 
-    Vec3f u = cross(Vec3f(AB.x, AC.x, PA.x), Vec3f(AB.y, AC.y, PA.y));
+    Vec3f u = cross(Vec3f(AC.x, AB.x, PA.x), Vec3f(AC.y, AB.y, PA.y));
 
     if (abs(u.z) < 1)
     {
@@ -176,10 +176,10 @@ void triangle(Vec4f *pts, IShader &shader, TGAImage &image, TGAImage &zbuffer) {
     TGAColor color;
     int width = image.get_width();
 
-    Vec3f pt3s[3];
-    pt3s[0] = Vec3f(pts[0][0]/pts[0][3], pts[0][1]/pts[0][3], pts[0][2]/pts[0][3]);
-    pt3s[1] = Vec3f(pts[1][0]/pts[1][3], pts[1][1]/pts[1][3], pts[1][2]/pts[1][3]);
-    pt3s[2] = Vec3f(pts[2][0]/pts[2][3], pts[2][1]/pts[2][3], pts[2][2]/pts[2][3]);
+    Vec2f pt2s[3];
+    pt2s[0] = Vec2f(pts[0][0]/pts[0][3], pts[0][1]/pts[0][3]);
+    pt2s[1] = Vec2f(pts[1][0]/pts[1][3], pts[1][1]/pts[1][3]);
+    pt2s[2] = Vec2f(pts[2][0]/pts[2][3], pts[2][1]/pts[2][3]);
 
     // cout << "min: " << bboxmin.x << " " << bboxmin.y << endl;
     // cout << "max: " << bboxmax.x << " " << bboxmax.y << endl;
@@ -187,7 +187,8 @@ void triangle(Vec4f *pts, IShader &shader, TGAImage &image, TGAImage &zbuffer) {
     for (p.x = bboxmin.x; p.x <= bboxmax.x; ++p.x) {
         for (p.y = bboxmin.y; p.y <= bboxmax.y; ++p.y)
         {
-            Vec3f centric = barycentric(pt3s, embed<3>(p));
+            Vec3f centric = barycentric(pt2s, p);
+            // Vec3f centric = barycentric(proj<2>(pts[0]/pts[0][3]), proj<2>(pts[1]/pts[1][3]), proj<2>(pts[2]/pts[2][3]), proj<2>(p));
             if (centric.x >= 0 && centric.y >= 0 && centric.z >= 0) {
                 float z = pts[0][2] * centric.x + pts[1][2] * centric.y + pts[2][2] * centric.z; 
                 float w = pts[0][3] * centric.x + pts[1][3] * centric.y + pts[2][3] * centric.z;
