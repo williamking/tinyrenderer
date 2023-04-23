@@ -16,7 +16,7 @@ Vec3f barycentric(Vec3f *pts, Vec3f P) {
     Vec3f BC = pts[2] - pts[1];
     Vec3f PA = pts[0] - P;
 
-    Vec3f u = cross(Vec3f(AB.x, AC.x, PA.x), Vec3f(AB.y, AC.y, PA.y));
+    Vec3f u = cross(Vec3f(AC.x, AB.x, PA.x), Vec3f(AC.y, AB.y, PA.y));
 
     if (abs(u.z) < 1)
     {
