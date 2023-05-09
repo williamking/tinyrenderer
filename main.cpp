@@ -14,6 +14,13 @@ const int width = 600;
 const int height = 600;
 float *zBuffer = NULL;
 
+// 环境光强度
+float laka = 30.0 / 255;
+// 漫反射光强度
+float ldkd = 40.0 / 255;
+// 光源强度
+float lsks = 60.0 / 255;
+
 Model *model = NULL;
 
 Vec3f light_dir(1,1,1);
@@ -157,7 +164,7 @@ struct PhongShader : public IShader {
 
     // 顶点着色器，参数为面索引和第几个顶点
     virtual Vec4f vertex(int iface, int nthvert) {
-        // 计算每个顶点的光照
+        // 记录每个顶点的法向量
         dirs[nthvert] = model->normal(iface, nthvert);
         Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
         Vec4f result = Viewport*Projection*ModelView*gl_Vertex;
@@ -172,6 +179,7 @@ struct PhongShader : public IShader {
     virtual bool fragment(Vec3f bar, TGAColor &color) {
         Vec3f normal(0, 0, 0);
 
+        // 面的法向量为顶点法向量和
         for (int i = 0; i < 3; ++i)
         {
             normal = normal + dirs[i];
@@ -179,7 +187,9 @@ struct PhongShader : public IShader {
 
         normal = normal.normalize();
 
-        float intensity = std::max(0.f, normal * light_dir);
+        Vec3f reflect = light_dir - 2 * (normal * light_dir) * normal;
+
+        float intensity = laka + std::max(0.f, ldkd * (normal * light_dir)) + lsks * std::max(0.f, reflect * eye);
 
         color = TGAColor(255, 255, 255) * intensity; // well duh
         // cout << "intensity: " << intensity << endl;
