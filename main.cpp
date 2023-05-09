@@ -17,9 +17,9 @@ float *zBuffer = NULL;
 // 环境光强度
 float laka = 30.0 / 255;
 // 漫反射光强度
-float ldkd = 40.0 / 255;
+float ldkd = 1;
 // 光源强度
-float lsks = 60.0 / 255;
+float lsks = 0.6;
 
 Model *model = NULL;
 
@@ -161,13 +161,17 @@ void drawModelLight(TGAImage &image) {
 
 struct PhongShader : public IShader {
     Vec3f dirs[3];
+    mat<2,3,float> varying_uv;
+    mat<4,4,float> uniform_M;   //  Projection*ModelView
+    mat<4,4,float> uniform_MIT; // (Projection*ModelView).invert_transpose()
 
     // 顶点着色器，参数为面索引和第几个顶点
     virtual Vec4f vertex(int iface, int nthvert) {
         // 记录每个顶点的法向量
         dirs[nthvert] = model->normal(iface, nthvert);
+        varying_uv.set_col(nthvert, model->uv(iface, nthvert));
         Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
-        Vec4f result = Viewport*Projection*ModelView*gl_Vertex;
+        Vec4f result = Viewport       *Projection*ModelView*gl_Vertex;
 
         // cout << "origin vertex " << gl_Vertex << endl;
         // cout << "screen vertex " << result << endl;
@@ -177,21 +181,21 @@ struct PhongShader : public IShader {
     }
 
     virtual bool fragment(Vec3f bar, TGAColor &color) {
-        Vec3f normal(0, 0, 0);
+        Vec2f uv = varying_uv*bar;
+        Vec3f n = proj<3>(uniform_MIT * embed<4>(model->normal(uv))).normalize();
+        Vec3f l = proj<3>(uniform_M * embed<4>(light_dir)).normalize();
 
-        // 面的法向量为顶点法向量和
-        for (int i = 0; i < 3; ++i)
-        {
-            normal = normal + dirs[i];
-        }
+        Vec3f reflect = (l - n * (2 * (n * l))).normalize() * -1;
 
-        normal = normal.normalize();
+        float intensity = laka + std::max(0.f, ldkd * (n * l)) + lsks * pow(std::max(0.f, reflect * eye), model->specular(uv));
+        // float intensity = laka + std::max(0.f, ldkd * (n * l)) + lsks * pow(std::max(0.f, reflect.z), model->specular(uv));
 
-        Vec3f reflect = light_dir - 2 * (normal * light_dir) * normal;
-
-        float intensity = laka + std::max(0.f, ldkd * (normal * light_dir)) + lsks * std::max(0.f, reflect * eye);
-
-        color = TGAColor(255, 255, 255) * intensity; // well duh
+        // color = model->diffuse(uv) * intensity; // well duh
+        float spec = pow(std::max(reflect.z, 0.0f), model->specular(uv));
+        float diff = std::max(0.f, n*l);
+        TGAColor c = model->diffuse(uv);
+        color = c;
+        for (int i=0; i<3; i++) color[i] = std::min<float>(5 + c[i]*(diff + .6*spec), 255);
         // cout << "intensity: " << intensity << endl;
         return false;                              // no, we do not discard this pixel
     }
@@ -225,7 +229,9 @@ struct GraundShader : public IShader {
 void drawModelWithShader(TGAImage &image) {
     // for (int i=width*height; i--; zBuffer[i] = -std::numeric_limits<float>::max());
     TGAImage zbuffer(width, height, TGAImage::GRAYSCALE);
-    GraundShader shader;
+    PhongShader shader;
+    shader.uniform_M = Projection * ModelView;
+    shader.uniform_MIT = shader.uniform_M.invert_transpose();
 
     model = new Model("../obj/african_head/african_head.obj");
     for (int i=0; i<model->nfaces(); i++) { 
