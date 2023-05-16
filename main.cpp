@@ -2,6 +2,7 @@
 #include "geometry.h"
 #include "model.h"
 #include "our_gl.h"
+#include "shader.h"
 #include <vector>
 #include <cmath>
 #include <iostream>
@@ -13,20 +14,6 @@ const TGAColor green = TGAColor(0,   255, 0,   255);
 const int width = 600;
 const int height = 600;
 float *zBuffer = NULL;
-
-// 环境光强度
-float laka = 30.0 / 255;
-// 漫反射光强度
-float ldkd = 1;
-// 光源强度
-float lsks = 0.6;
-
-Model *model = NULL;
-
-Vec3f light_dir(1,1,1);
-Vec3f       eye(1,1,3);
-Vec3f    center(0,0,0);
-Vec3f        up(0,1,0);
 
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color)
 {
@@ -158,73 +145,6 @@ void drawModelLight(TGAImage &image) {
     model = NULL;
     zBuffer = NULL;
 }
-
-struct PhongShader : public IShader {
-    Vec3f dirs[3];
-    mat<2,3,float> varying_uv;
-    mat<4,4,float> uniform_M;   //  Projection*ModelView
-    mat<4,4,float> uniform_MIT; // (Projection*ModelView).invert_transpose()
-
-    // 顶点着色器，参数为面索引和第几个顶点
-    virtual Vec4f vertex(int iface, int nthvert) {
-        // 记录每个顶点的法向量
-        dirs[nthvert] = model->normal(iface, nthvert);
-        varying_uv.set_col(nthvert, model->uv(iface, nthvert));
-        Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
-        Vec4f result = Viewport       *Projection*ModelView*gl_Vertex;
-
-        // cout << "origin vertex " << gl_Vertex << endl;
-        // cout << "screen vertex " << result << endl;
-        
-        return result; // transform it to screen coordinates
-
-    }
-
-    virtual bool fragment(Vec3f bar, TGAColor &color) {
-        Vec2f uv = varying_uv*bar;
-        Vec3f n = proj<3>(uniform_MIT * embed<4>(model->normal(uv))).normalize();
-        Vec3f l = proj<3>(uniform_M * embed<4>(light_dir)).normalize();
-
-        Vec3f reflect = (l - n * (2 * (n * l))).normalize() * -1;
-
-        float intensity = laka + std::max(0.f, ldkd * (n * l)) + lsks * pow(std::max(0.f, reflect * eye), model->specular(uv));
-        // float intensity = laka + std::max(0.f, ldkd * (n * l)) + lsks * pow(std::max(0.f, reflect.z), model->specular(uv));
-
-        // color = model->diffuse(uv) * intensity; // well duh
-        float spec = pow(std::max(reflect.z, 0.0f), model->specular(uv));
-        float diff = std::max(0.f, n*l);
-        TGAColor c = model->diffuse(uv);
-        color = c;
-        for (int i=0; i<3; i++) color[i] = std::min<float>(5 + c[i]*(diff + .6*spec), 255);
-        // cout << "intensity: " << intensity << endl;
-        return false;                              // no, we do not discard this pixel
-    }
-};
-
-struct GraundShader : public IShader {
-    Vec3f varying_intensity; // written by vertex shader, read by fragment shader
-
-    // 顶点着色器，参数为面索引和第几个顶点
-    virtual Vec4f vertex(int iface, int nthvert) {
-        // 计算每个顶点的光照
-        varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity
-        Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
-        Vec4f result = Viewport*Projection*ModelView*gl_Vertex;
-
-        // cout << "origin vertex " << gl_Vertex << endl;
-        // cout << "screen vertex " << result << endl;
-        
-        return result; // transform it to screen coordinates
-
-    }
-
-    virtual bool fragment(Vec3f bar, TGAColor &color) {
-        float intensity = varying_intensity*bar;   // interpolate intensity for the current pixel
-        color = TGAColor(255, 255, 255) * intensity; // well duh
-        // cout << "intensity: " << intensity << endl;
-        return false;                              // no, we do not discard this pixel
-    }
-};
 
 void drawModelWithShader(TGAImage &image) {
     // for (int i=width*height; i--; zBuffer[i] = -std::numeric_limits<float>::max());
